@@ -1,0 +1,20 @@
+resources
+| where type != "microsoft.insights/diagnosticsettings"
+| where type !has "microsoft.operationalinsights"
+| where type !has "microsoft.insights"
+| where type !has "microsoft.alertsmanagement"
+| extend resourceId = tolower(id)
+| join kind=leftanti (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend resourceId = tolower(substring(id, 0, indexof(id, '/providers/microsoft.insights')))
+    | project resourceId
+) on resourceId
+| project 
+    resourceName = name,
+    resourceType = type,
+    resourceGroup,
+    location,
+    subscriptionId,
+    tags
+| order by resourceType, resourceGroup

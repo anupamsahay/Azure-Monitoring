@@ -1,0 +1,20 @@
+resources
+| where type in (
+    "microsoft.insights/actiongroups",
+    "microsoft.insights/metricalerts",
+    "microsoft.insights/scheduledqueryrules"
+)
+| extend 
+    resourceKind = case(
+        type == "microsoft.insights/actiongroups", "Action Group",
+        type == "microsoft.insights/metricalerts", "Metric Alert",
+        type == "microsoft.insights/scheduledqueryrules", "Log Query Alert",
+        "Other"
+    ),
+    isEnabled = properties.enabled
+| summarize 
+    Total = count(),
+    Enabled = countif(isEnabled == true),
+    Disabled = countif(isEnabled == false)
+    by resourceKind, resourceGroup, subscriptionId
+| order by resourceKind, Total desc

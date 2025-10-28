@@ -1,0 +1,37 @@
+resources
+| where type == "microsoft.containerservice/managedclusters"
+| extend 
+    clusterName = name,
+    omsAgentEnabled = properties.addonProfiles.omsagent.enabled,
+    workspaceResourceId = properties.addonProfiles.omsagent.config.logAnalyticsWorkspaceResourceID,
+    azureMonitorMetrics = properties.azureMonitorProfile.metrics.enabled,
+    containerInsights = properties.azureMonitorProfile.containerInsights.enabled
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend clusterId = substring(id, 0, indexof(id, '/providers/microsoft.insights'))
+    | summarize 
+        diagnosticSettingsCount = count(),
+        logCategories = make_set(properties.logs)
+        by clusterId
+) on $left.id == $right.clusterId
+| extend 
+    monitoringLevel = case(
+        omsAgentEnabled and diagnosticSettingsCount > 0 and azureMonitorMetrics, "Complete Monitoring",
+        omsAgentEnabled and diagnosticSettingsCount > 0, "Container Insights + Diagnostics",
+        omsAgentEnabled, "Container Insights Only",
+        diagnosticSettingsCount > 0, "Diagnostics Only",
+        "Not Monitored"
+    )
+| project 
+    clusterName,
+    resourceGroup,
+    location,
+    monitoringLevel,
+    omsAgentEnabled,
+    workspaceResourceId,
+    azureMonitorMetrics,
+    containerInsights,
+    diagnosticSettingsCount,
+    logCategories
+| order by monitoringLevel

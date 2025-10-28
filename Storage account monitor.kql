@@ -1,0 +1,34 @@
+resources
+| where type == "microsoft.storage/storageaccounts"
+| extend storageId = tolower(id)
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend storageId = tolower(substring(id, 0, indexof(id, '/providers/microsoft.insights')))
+    | extend 
+        diagnosticName = name,
+        logs = properties.logs,
+        metrics = properties.metrics,
+        workspaceId = properties.workspaceId
+    | summarize 
+        diagnosticSettingsCount = count(),
+        allLogs = make_set(logs),
+        allMetrics = make_set(metrics),
+        workspaces = make_set(workspaceId)
+        by storageId
+) on storageId
+| extend 
+    isMonitored = diagnosticSettingsCount > 0,
+    monitoringStatus = iff(diagnosticSettingsCount > 0, "Monitored", "Not Monitored")
+| project 
+    storageAccountName = name,
+    resourceGroup,
+    location,
+    subscriptionId,
+    monitoringStatus,
+    diagnosticSettingsCount,
+    logCategories = allLogs,
+    metricCategories = allMetrics,
+    connectedWorkspaces = workspaces,
+    properties
+| order by monitoringStatus desc

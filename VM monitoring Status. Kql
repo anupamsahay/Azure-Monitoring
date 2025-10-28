@@ -1,0 +1,44 @@
+resources
+| where type == "microsoft.compute/virtualmachines"
+| extend vmId = tolower(id)
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.compute/virtualmachines/extensions"
+    | where properties.type in ("MicrosoftMonitoringAgent", "OmsAgentForLinux", "AzureMonitorWindowsAgent", "AzureMonitorLinuxAgent")
+    | extend vmId = tolower(substring(id, 0, indexof(id, '/extensions/')))
+    | extend 
+        extensionType = properties.type,
+        extensionPublisher = properties.publisher,
+        extensionProvisioningState = properties.provisioningState,
+        workspaceId = properties.settings.workspaceId
+    | summarize 
+        extensions = make_set(extensionType),
+        workspaceIds = make_set(workspaceId)
+        by vmId
+) on vmId
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend vmId = tolower(substring(id, 0, indexof(id, '/providers/microsoft.insights')))
+    | summarize diagnosticSettings = count() by vmId
+) on vmId
+| extend 
+    hasAgentExtension = isnotnull(extensions),
+    hasDiagnosticSettings = diagnosticSettings > 0,
+    monitoringStatus = case(
+        isnotnull(extensions) and diagnosticSettings > 0, "Full Monitoring (Agent + Diagnostics)",
+        isnotnull(extensions), "Agent Only",
+        diagnosticSettings > 0, "Diagnostics Only",
+        "Not Monitored"
+    )
+| project 
+    vmName = name,
+    resourceGroup,
+    location,
+    subscriptionId,
+    monitoringStatus,
+    agentExtensions = extensions,
+    workspaceIds,
+    diagnosticSettingsCount = diagnosticSettings,
+    properties
+| order by monitoringStatus

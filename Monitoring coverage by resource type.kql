@@ -1,0 +1,17 @@
+resources
+| where type != "microsoft.insights/diagnosticsettings"
+| extend resourceId = tolower(id)
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend resourceId = tolower(substring(id, 0, indexof(id, '/providers/microsoft.insights')))
+    | summarize hasMonitoring = max(1) by resourceId
+) on resourceId
+| summarize 
+    TotalResources = count(),
+    MonitoredResources = countif(hasMonitoring == 1),
+    NotMonitoredResources = countif(isempty(hasMonitoring)),
+    MonitoringCoverage = round(100.0 * countif(hasMonitoring == 1) / count(), 2)
+    by resourceType = type
+| where TotalResources > 0
+| order by MonitoringCoverage asc, TotalResources desc

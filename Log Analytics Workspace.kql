@@ -1,0 +1,28 @@
+resources
+| where type == "microsoft.operationalinsights/workspaces"
+| extend workspaceId = tolower(id)
+| project 
+    workspaceName = name,
+    workspaceId,
+    location,
+    resourceGroup,
+    subscriptionId,
+    customerId = properties.customerId,
+    retentionInDays = properties.retentionInDays,
+    sku = properties.sku.name
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | where isnotnull(properties.workspaceId)
+    | extend workspaceId = tolower(properties.workspaceId)
+    | summarize connectedResources = count() by workspaceId
+) on workspaceId
+| project 
+    workspaceName,
+    resourceGroup,
+    location,
+    subscriptionId,
+    sku,
+    retentionInDays,
+    connectedResources = coalesce(connectedResources, 0)
+| order by connectedResources desc

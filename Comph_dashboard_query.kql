@@ -1,0 +1,54 @@
+resources
+| where type != "microsoft.insights/diagnosticsettings"
+| where type !has "microsoft.operationalinsights"
+| where type !has "microsoft.insights"
+| extend resourceId = tolower(id)
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend resourceId = tolower(substring(id, 0, indexof(id, '/providers/microsoft.insights')))
+    | mv-expand logCategory = properties.logs
+    | mv-expand metricCategory = properties.metrics
+    | summarize 
+        diagnosticSettingsCount = dcount(name),
+        logCategoriesEnabled = countif(logCategory.enabled == true),
+        metricCategoriesEnabled = countif(metricCategory.enabled == true),
+        workspaceId = any(properties.workspaceId),
+        storageAccountId = any(properties.storageAccountId),
+        eventHubName = any(properties.eventHubName)
+        by resourceId
+) on resourceId
+| extend 
+    hasLogsEnabled = logCategoriesEnabled > 0,
+    hasMetricsEnabled = metricCategoriesEnabled > 0,
+    hasWorkspace = isnotnull(workspaceId),
+    hasStorage = isnotnull(storageAccountId),
+    hasEventHub = isnotnull(eventHubName),
+    monitoringScore = case(
+        diagnosticSettingsCount > 0 and logCategoriesEnabled > 0 and metricCategoriesEnabled > 0 and isnotnull(workspaceId), 100,
+        diagnosticSettingsCount > 0 and (logCategoriesEnabled > 0 or metricCategoriesEnabled > 0), 75,
+        diagnosticSettingsCount > 0, 50,
+        0
+    ),
+    monitoringLevel = case(
+        diagnosticSettingsCount > 0 and logCategoriesEnabled > 0 and metricCategoriesEnabled > 0 and isnotnull(workspaceId), "Excellent",
+        diagnosticSettingsCount > 0 and (logCategoriesEnabled > 0 or metricCategoriesEnabled > 0), "Good",
+        diagnosticSettingsCount > 0, "Basic",
+        "None"
+    )
+| project 
+    resourceName = name,
+    resourceType = type,
+    resourceGroup,
+    location,
+    subscriptionId,
+    monitoringLevel,
+    monitoringScore,
+    diagnosticSettingsCount,
+    logCategoriesEnabled,
+    metricCategoriesEnabled,
+    hasWorkspace,
+    hasStorage,
+    hasEventHub,
+    workspaceId
+| order by monitoringScore desc, resourceType

@@ -1,0 +1,17 @@
+resources
+| where type != "microsoft.insights/diagnosticsettings"
+| where type !has "microsoft.operationalinsights"
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend resourceId = substring(id, 0, indexof(id, '/providers/microsoft.insights'))
+    | summarize diagnosticSettingsCount = count() by resourceId
+) on $left.id == $right.resourceId
+| extend isMonitored = diagnosticSettingsCount > 0
+| summarize 
+    TotalResources = count(),
+    MonitoredResources = countif(isMonitored),
+    NotMonitoredResources = countif(not(isMonitored)),
+    MonitoringPercentage = round(100.0 * countif(isMonitored) / count(), 2)
+    by resourceType = type, resourceGroup, subscriptionId
+| order by TotalResources desc

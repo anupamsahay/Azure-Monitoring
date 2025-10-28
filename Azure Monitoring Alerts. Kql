@@ -1,0 +1,22 @@
+resources
+| where type in (
+    "microsoft.insights/metricalerts",
+    "microsoft.insights/scheduledqueryrules",
+    "microsoft.insights/activitylogalerts"
+)
+| extend 
+    alertType = case(
+        type == "microsoft.insights/metricalerts", "Metric Alert",
+        type == "microsoft.insights/scheduledqueryrules", "Log Alert",
+        type == "microsoft.insights/activitylogalerts", "Activity Log Alert",
+        "Other"
+    ),
+    enabled = properties.enabled,
+    scopes = properties.scopes,
+    targetResourceType = properties.targetResourceType
+| summarize 
+    TotalAlerts = count(),
+    EnabledAlerts = countif(enabled == true),
+    DisabledAlerts = countif(enabled == false)
+    by alertType, resourceGroup, subscriptionId
+| order by TotalAlerts desc

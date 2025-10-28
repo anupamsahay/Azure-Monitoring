@@ -1,0 +1,36 @@
+resources
+| where type == "microsoft.sql/servers/databases"
+| where name != "master"
+| extend dbId = tolower(id)
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend dbId = tolower(substring(id, 0, indexof(id, '/providers/microsoft.insights')))
+    | mv-expand logCategory = properties.logs
+    | extend 
+        categoryName = logCategory.category,
+        categoryEnabled = logCategory.enabled
+    | summarize 
+        enabledLogCategories = countif(categoryEnabled == true),
+        logCategories = make_set(categoryName),
+        workspaceId = any(properties.workspaceId)
+        by dbId
+) on dbId
+| extend 
+    monitoringStatus = case(
+        enabledLogCategories >= 5, "Comprehensive Monitoring",
+        enabledLogCategories >= 2, "Partial Monitoring",
+        enabledLogCategories >= 1, "Minimal Monitoring",
+        "Not Monitored"
+    )
+| project 
+    databaseName = name,
+    serverName = split(id, '/')[8],
+    resourceGroup,
+    location,
+    monitoringStatus,
+    enabledLogCategories,
+    logCategories,
+    workspaceId,
+    properties
+| order by monitoringStatus desc

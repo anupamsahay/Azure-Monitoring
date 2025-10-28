@@ -1,0 +1,47 @@
+ResourceContainers
+| where type == "microsoft.resources/subscriptions"
+| project subscriptionId
+| join kind=inner (
+    resources
+    | where type != "microsoft.insights/diagnosticsettings"
+    | where type !has "microsoft.operationalinsights"
+) on subscriptionId
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend targetResourceId = substring(id, 0, indexof(id, '/providers/microsoft.insights'))
+    | extend 
+        logsEnabled = array_length(properties.logs) > 0,
+        metricsEnabled = array_length(properties.metrics) > 0,
+        logCategories = properties.logs,
+        metricCategories = properties.metrics,
+        workspaceId = properties.workspaceId,
+        storageAccountId = properties.storageAccountId,
+        eventHubAuthorizationRuleId = properties.eventHubAuthorizationRuleId,
+        eventHubName = properties.eventHubName
+    | project targetResourceId, diagnosticSettingName = name, logsEnabled, metricsEnabled, 
+              logCategories, metricCategories, workspaceId, storageAccountId, 
+              eventHubAuthorizationRuleId, eventHubName
+) on $left.id == $right.targetResourceId
+| extend 
+    hasMonitoring = isnotnull(diagnosticSettingName),
+    monitoringStatus = case(
+        isnotnull(diagnosticSettingName), "Monitored",
+        "Not Monitored"
+    )
+| project 
+    resourceName = name,
+    resourceType = type,
+    resourceGroup,
+    location,
+    subscriptionId,
+    monitoringStatus,
+    diagnosticSettingName,
+    logsEnabled,
+    metricsEnabled,
+    logCategories,
+    metricCategories,
+    workspaceId,
+    storageAccountId,
+    eventHubName
+| order by monitoringStatus, resourceType

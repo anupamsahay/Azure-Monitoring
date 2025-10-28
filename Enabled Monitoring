@@ -1,0 +1,28 @@
+resources
+| where type != "microsoft.insights/diagnosticsettings"
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend resourceId = substring(id, 0, indexof(id, '/providers/microsoft.insights'))
+    | project resourceId, diagnosticSettingName = name, 
+              logs = properties.logs, 
+              metrics = properties.metrics,
+              workspaceId = properties.workspaceId,
+              storageAccountId = properties.storageAccountId,
+              eventHubName = properties.eventHubName
+) on $left.id == $right.resourceId
+| extend isMonitored = isnotnull(diagnosticSettingName)
+| project 
+    resourceName = name,
+    resourceType = type,
+    resourceGroup,
+    location,
+    subscriptionId,
+    isMonitored,
+    diagnosticSettingName,
+    logs,
+    metrics,
+    workspaceId,
+    storageAccountId,
+    eventHubName
+| order by isMonitored desc, resourceType

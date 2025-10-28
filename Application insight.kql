@@ -1,0 +1,13 @@
+resources
+| where type == "microsoft.insights/components"
+| extend appInsightsId = tolower(id)
+| project 
+    appInsightsName = name,
+    appInsightsId,
+    instrumentationKey = properties.InstrumentationKey,
+    connectionString = properties.ConnectionString,
+    applicationType = properties.Application_Type,
+    workspaceResourceId = properties.WorkspaceResourceId,
+    resourceGroup,
+    location,
+    subscriptionId

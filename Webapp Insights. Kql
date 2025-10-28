@@ -1,0 +1,30 @@
+resources
+| where type == "microsoft.web/sites"
+| extend 
+    appInsightsKey = properties.SiteConfig.AppSettings[?name=='APPINSIGHTS_INSTRUMENTATIONKEY'].value,
+    appInsightsConnectionString = properties.SiteConfig.AppSettings[?name=='APPLICATIONINSIGHTS_CONNECTION_STRING'].value
+| join kind=leftouter (
+    resources
+    | where type == "microsoft.insights/diagnosticsettings"
+    | extend webAppId = substring(id, 0, indexof(id, '/providers/microsoft.insights'))
+    | summarize diagnosticSettingsCount = count() by webAppId
+) on $left.id == $right.webAppId
+| extend 
+    hasAppInsights = isnotnull(appInsightsKey) or isnotnull(appInsightsConnectionString),
+    hasDiagnostics = diagnosticSettingsCount > 0,
+    monitoringStatus = case(
+        (isnotnull(appInsightsKey) or isnotnull(appInsightsConnectionString)) and diagnosticSettingsCount > 0, "Full Monitoring",
+        isnotnull(appInsightsKey) or isnotnull(appInsightsConnectionString), "App Insights Only",
+        diagnosticSettingsCount > 0, "Diagnostics Only",
+        "Not Monitored"
+    )
+| project 
+    webAppName = name,
+    resourceGroup,
+    location,
+    monitoringStatus,
+    hasAppInsights,
+    hasDiagnostics,
+    diagnosticSettingsCount,
+    properties
+| order by monitoringStatus desc
